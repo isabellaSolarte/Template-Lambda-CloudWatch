@@ -1,0 +1,125 @@
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: aws-lambda-cloudwatch-pr-template
+  title: Creación de AWS Lambda + CloudWatch Event
+  description: Genera infraestructura IaC en Terraform para AWS Lambda con regla CloudWatch y crea un PR en el repositorio destino.
+  tags:
+    - aws
+    - lambda
+    - cloudwatch
+    - terraform
+    - github
+spec:
+  owner: devops-team
+  type: service
+
+  # 1. Definición de parámetros basados en tu código de Terraform
+  parameters:
+    - title: Configuración de la Lambda y Evento CloudWatch
+      required:
+        - function_name
+        - name_event
+        - schedule_expression_event
+        - description_rule_event
+        - runtime
+        - memory_size
+        - timeout
+      properties:
+        function_name:
+          title: Nombre de la Función Lambda
+          type: string
+          description: Identificador de la función (ej. my-scheduled-lambda)
+        name_event:
+          title: Nombre del Evento CloudWatch
+          type: string
+          description: Identificador de la regla de eventos (ej. my-cron-rule)
+        schedule_expression_event:
+          title: Expresión del Cron / Schedule
+          type: string
+          description: Expresión de programación para la regla (ej. rate(1 hour) o cron(0 12 * * ? *))
+          default: rate(1 hour)
+        description_rule_event:
+          title: Descripción de la Regla
+          type: string
+          description: Breve descripción de la regla de CloudWatch
+        runtime:
+          title: Runtime de Lambda
+          type: string
+          default: nodejs18.x
+          enum:
+            - nodejs18.x
+            - nodejs20.x
+            - python3.9
+            - python3.10
+        memory_size:
+          title: Tamaño de Memoria (MB)
+          type: integer
+          default: 512
+          description: Memoria asignada a la función Lambda
+        timeout:
+          title: Timeout (Segundos)
+          type: integer
+          default: 30
+          description: Tiempo máximo de ejecución en segundos
+
+    - title: Configuración del Repositorio y Pull Request
+      required:
+        - repo_name
+        - target_branch
+        - new_branch
+      properties:
+        repo_name:
+          title: Nombre del Repositorio Destino
+          type: string
+          description: Repositorio existente donde se abrirá el PR (ej. mi-repo-iac)
+        target_branch:
+          title: Rama Base (Target)
+          type: string
+          default: main
+          description: Rama destino contra la cual se abrirá el PR
+        new_branch:
+          title: Nombre de la Nueva Rama
+          type: string
+          description: Rama temporal a crear para el PR (ej. feature/add-lambda-cron)
+
+  # 2. Pasos de ejecución
+  steps:
+    # Paso A: Renderizado de la plantilla Terraform enviando las variables de los locals
+    - id: fetch-template
+      name: Generando plantillas de Terraform
+      action: fetch:template
+      input:
+        url: src\Terraform\Lambda-cloudwatch.tf
+        values:
+          function_name: ${{ parameters.function_name }}
+          name_event: ${{ parameters.name_event }}
+          schedule_expression_event: ${{ parameters.schedule_expression_event }}
+          description_rule_event: ${{ parameters.description_rule_event }}
+          runtime: ${{ parameters.runtime }}
+          memory_size: ${{ parameters.memory_size }}
+          timeout: ${{ parameters.timeout }}
+
+    # Paso B: Publicación mediante Pull Request en GitHub
+    - id: create-pr
+      name: Creando Pull Request en GitHub
+      action: publish:github:pull-request
+      input:
+        repoUrl: github.com?repo=${{ parameters.repo_name }}&organization=tu-organizacion
+        branchName: ${{ parameters.new_branch }}
+        targetBranchName: ${{ parameters.target_branch }}
+        title: "feat(infra): Aprovisionamiento de Lambda ${{ parameters.function_name }}"
+        description: |
+          ### Aprovisionamiento de Infraestructura via Backstage
+          
+          Se han generado los recursos de Terraform con la siguiente configuración:
+          - **Lambda Name:** `${{ parameters.function_name }}`
+          - **Runtime:** `${{ parameters.runtime }}`
+          - **Memory / Timeout:** `${{ parameters.memory_size }} MB` / `${{ parameters.timeout }}s`
+          - **CloudWatch Rule:** `${{ parameters.name_event }}` (`${{ parameters.schedule_expression_event }}`)
+
+  # 3. Resultado final con enlace al Pull Request
+  output:
+    links:
+      - title: Ver Pull Request Creado
+        url: ${{ steps['create-pr'].output.remoteUrl }}
